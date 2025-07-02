@@ -1,8 +1,15 @@
 <?php
 /**
- * Classe pour la partie publique du plugin - VERSION COMPLÈTE avec régions et anonymisation
+ * Classe pour la partie publique du plugin - VERSION COMPLÈTE OPTIMISÉE
  * 
  * Fichier: includes/class-trainer-registration-public.php
+ * 
+ * ✅ Toutes les fonctionnalités :
+ * - Régions d'intervention complètes (18 régions françaises)
+ * - LinkedIn optionnel
+ * - Anonymisation des noms (format "D. Jean")
+ * - Profils détaillés avec modal
+ * - Recherche avec filtre par régions
  */
 
 if (!defined('ABSPATH')) {
@@ -34,6 +41,29 @@ class TrainerRegistrationPublic {
         // Hooks pour améliorer l'intégration
         add_action('wp_head', array($this, 'add_custom_css_variables'));
         add_filter('body_class', array($this, 'add_body_classes'));
+        
+        // Hook pour créer la colonne intervention_regions si elle n'existe pas
+        add_action('init', array($this, 'maybe_add_regions_column'));
+    }
+
+    /**
+     * ✅ NOUVEAU : Ajouter la colonne intervention_regions si elle n'existe pas
+     */
+    public function maybe_add_regions_column() {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'trainer_registrations';
+        
+        // Vérifier si la colonne existe
+        $column_exists = $wpdb->get_results($wpdb->prepare(
+            "SHOW COLUMNS FROM $table_name LIKE %s",
+            'intervention_regions'
+        ));
+        
+        if (empty($column_exists)) {
+            // Ajouter la colonne
+            $wpdb->query("ALTER TABLE $table_name ADD COLUMN intervention_regions TEXT AFTER specialties");
+        }
     }
 
     /**
@@ -83,7 +113,7 @@ class TrainerRegistrationPublic {
             true
         );
         
-        // Configuration AJAX avec nouvelles fonctionnalités
+        // Configuration AJAX avec toutes les régions françaises
         wp_localize_script('trpro-public-script', 'trainer_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('trainer_registration_nonce'),
@@ -94,15 +124,19 @@ class TrainerRegistrationPublic {
                 'loading' => __('Chargement en cours...', 'trainer-registration'),
                 'search_no_results' => __('Aucun formateur trouvé pour cette recherche.', 'trainer-registration'),
                 'contact_success' => __('Message envoyé avec succès !', 'trainer-registration'),
-                'contact_error' => __('Erreur lors de l\'envoi du message.', 'trainer-registration')
+                'contact_error' => __('Erreur lors de l\'envoi du message.', 'trainer-registration'),
+                'linkedin_optional' => __('LinkedIn est optionnel mais recommandé.', 'trainer-registration')
             ),
             'settings' => array(
                 'max_file_size' => 5 * 1024 * 1024, // 5MB
                 'allowed_file_types' => array('pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif'),
                 'search_delay' => 300,
-                'animation_duration' => 300
+                'animation_duration' => 300,
+                'linkedin_required' => false // ✅ LinkedIn optionnel
             ),
+            // ✅ TOUTES LES 18 RÉGIONS FRANÇAISES OFFICIELLES 2025
             'regions' => array(
+                // Régions métropolitaines (13)
                 'ile-de-france' => 'Île-de-France',
                 'auvergne-rhone-alpes' => 'Auvergne-Rhône-Alpes',
                 'nouvelle-aquitaine' => 'Nouvelle-Aquitaine',
@@ -116,16 +150,23 @@ class TrainerRegistrationPublic {
                 'bourgogne-franche-comte' => 'Bourgogne-Franche-Comté',
                 'centre-val-de-loire' => 'Centre-Val de Loire',
                 'corse' => 'Corse',
-                'outre-mer' => 'Outre-mer (DOM-TOM)',
+                // Régions d'outre-mer (5 DROM)
+                'guadeloupe' => 'Guadeloupe',
+                'martinique' => 'Martinique',
+                'guyane' => 'Guyane',
+                'la-reunion' => 'La Réunion',
+                'mayotte' => 'Mayotte',
+                // Autres zones
                 'europe' => 'Europe (hors France)',
                 'international' => 'International',
                 'distanciel' => 'Formation à distance'
-            )
+            ),
+            'contact_email' => get_option('trainer_contact_email', get_option('admin_email'))
         ));
     }
     
     /**
-     * ✅ NOUVEAU : Gestion robuste de l'AJAX avec régions
+     * ✅ Gestion robuste de l'AJAX avec régions et LinkedIn optionnel
      */
     public function handle_trainer_registration() {
         try {
@@ -137,7 +178,7 @@ class TrainerRegistrationPublic {
                 ));
             }
 
-            // Validation des données avec régions
+            // Validation des données avec régions et LinkedIn optionnel
             $validation_result = $this->validate_form_data_with_regions($_POST, $_FILES);
             if (!$validation_result['valid']) {
                 wp_send_json_error(array(
@@ -180,16 +221,21 @@ class TrainerRegistrationPublic {
             // Notifications
             $this->send_notifications($trainer_data, $trainer_id);
 
-            // Succès
+            // Succès avec message personnalisé selon LinkedIn
+            $linkedin_msg = !empty($trainer_data['linkedin_url']) ? 
+                ' Votre profil LinkedIn renforce votre crédibilité.' : 
+                ' Conseil : ajoutez votre LinkedIn plus tard pour plus de visibilité.';
+                
             $success_message = get_option('trainer_auto_approve', 0) 
-                ? 'Votre inscription a été validée avec succès ! Vous recevrez bientôt des opportunités.' 
-                : 'Votre inscription a été envoyée avec succès ! Nous examinerons votre profil et vous contacterons bientôt.';
+                ? 'Votre inscription a été validée avec succès !' . $linkedin_msg
+                : 'Votre inscription a été envoyée avec succès ! Nous examinerons votre profil et vous contacterons bientôt.' . $linkedin_msg;
 
             wp_send_json_success(array(
                 'message' => $success_message,
                 'trainer_id' => $trainer_id,
                 'redirect' => home_url('/catalogue-formateurs/'),
-                'status' => $trainer_data['status']
+                'status' => $trainer_data['status'],
+                'has_linkedin' => !empty($trainer_data['linkedin_url'])
             ));
 
         } catch (Exception $e) {
@@ -202,7 +248,7 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * ✅ NOUVEAU : Préparation des données avec régions
+     * ✅ Préparation des données avec régions et LinkedIn optionnel
      */
     private function prepare_trainer_data_with_regions($post_data, $files_result) {
         // Traitement des régions d'intervention
@@ -217,9 +263,9 @@ class TrainerRegistrationPublic {
             'email' => sanitize_email($post_data['email']),
             'phone' => sanitize_text_field($post_data['phone']),
             'company' => sanitize_text_field($post_data['company']),
-            'linkedin_url' => esc_url_raw($post_data['linkedin_url'] ?? ''),
+            'linkedin_url' => !empty($post_data['linkedin_url']) ? esc_url_raw($post_data['linkedin_url']) : '', // ✅ Optionnel
             'specialties' => implode(', ', array_map('sanitize_text_field', $post_data['specialties'])),
-            'intervention_regions' => $intervention_regions, // ✅ NOUVEAU
+            'intervention_regions' => $intervention_regions, // ✅ Régions d'intervention
             'availability' => sanitize_text_field($post_data['availability']),
             'hourly_rate' => sanitize_text_field($post_data['hourly_rate'] ?? ''),
             'experience' => sanitize_textarea_field($post_data['experience']),
@@ -235,7 +281,7 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * ✅ NOUVEAU : Validation avec régions
+     * ✅ Validation avec régions et LinkedIn optionnel
      */
     private function validate_form_data_with_regions($post_data, $files_data) {
         $errors = array();
@@ -266,7 +312,7 @@ class TrainerRegistrationPublic {
             $errors[] = 'Veuillez sélectionner au moins une spécialité';
         }
 
-        // ✅ NOUVEAU : Validation régions d'intervention obligatoires
+        // ✅ Validation régions d'intervention obligatoires
         if (empty($post_data['intervention_regions']) || !is_array($post_data['intervention_regions'])) {
             $errors[] = 'Veuillez sélectionner au moins une zone d\'intervention';
         }
@@ -286,9 +332,13 @@ class TrainerRegistrationPublic {
             $errors[] = 'Le CV est obligatoire';
         }
 
-        // Validation URL LinkedIn si fournie (optionnelle)
-        if (!empty($post_data['linkedin_url']) && !filter_var($post_data['linkedin_url'], FILTER_VALIDATE_URL)) {
-            $errors[] = 'L\'URL LinkedIn n\'est pas valide';
+        // ✅ LinkedIn optionnel - seulement valider si fourni
+        if (!empty($post_data['linkedin_url'])) {
+            if (!filter_var($post_data['linkedin_url'], FILTER_VALIDATE_URL)) {
+                $errors[] = 'L\'URL LinkedIn n\'est pas valide';
+            } elseif (!strpos($post_data['linkedin_url'], 'linkedin.com')) {
+                $errors[] = 'L\'URL doit être un profil LinkedIn valide';
+            }
         }
 
         return array(
@@ -298,7 +348,7 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * ✅ NOUVEAU : Recherche avancée avec régions
+     * ✅ Recherche avancée avec régions
      */
     public function handle_advanced_trainer_search() {
         if (!wp_verify_nonce($_POST['nonce'], 'trainer_registration_nonce')) {
@@ -330,6 +380,8 @@ class TrainerRegistrationPublic {
             // ✅ Ajouter les noms anonymisés dans les résultats
             foreach ($results['trainers'] as $trainer) {
                 $trainer->display_name = $this->get_anonymized_name($trainer->first_name, $trainer->last_name);
+                // Nettoyer les données sensibles côté client
+                unset($trainer->email, $trainer->phone);
             }
             
             wp_send_json_success($results);
@@ -344,7 +396,7 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * ✅ NOUVEAU : Logique de recherche avancée avec régions
+     * ✅ Logique de recherche avancée avec régions
      */
     private function perform_advanced_trainer_search($params) {
         global $wpdb;
@@ -485,11 +537,8 @@ class TrainerRegistrationPublic {
                 $trainer->cv_url = $upload_dir['baseurl'] . '/' . $trainer->cv_file;
             }
             
-            // ✅ NOUVEAU : Anonymiser le nom
+            // ✅ Anonymiser le nom
             $trainer->display_name = $this->get_anonymized_name($trainer->first_name, $trainer->last_name);
-            
-            // Nettoyer les données sensibles côté client (garder nom pour admin)
-            // Ne pas supprimer first_name et last_name car nécessaires pour l'anonymisation
         }
         
         return array(
@@ -503,18 +552,19 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * ✅ NOUVEAU : Générer le nom anonymisé
+     * ✅ FONCTION PRINCIPALE : Générer le nom anonymisé (format "D. Jean")
      */
     private function get_anonymized_name($first_name, $last_name) {
         if (empty($last_name) || empty($first_name)) {
             return 'Formateur Expert';
         }
         
+        // Format : Première lettre du nom en majuscule + point + prénom complet
         return strtoupper(substr($last_name, 0, 1)) . '. ' . $first_name;
     }
 
     /**
-     * ✅ NOUVEAU : Handler pour récupérer le profil détaillé
+     * ✅ Handler pour récupérer le profil détaillé
      */
     public function handle_get_trainer_profile() {
         if (!wp_verify_nonce($_POST['nonce'], 'trainer_registration_nonce')) {
@@ -539,12 +589,12 @@ class TrainerRegistrationPublic {
             wp_send_json_error(array('message' => 'Formateur non trouvé'));
         }
         
-        // Préparer les données pour l'affichage
+        // Préparer les données pour l'affichage avec anonymisation
         $upload_dir = wp_upload_dir();
         
         $profile_data = array(
             'id' => $trainer->id,
-            'display_name' => $this->get_anonymized_name($trainer->first_name, $trainer->last_name),
+            'display_name' => $this->get_anonymized_name($trainer->first_name, $trainer->last_name), // ✅ Anonymisé
             'company' => $trainer->company,
             'specialties' => explode(', ', $trainer->specialties),
             'intervention_regions' => !empty($trainer->intervention_regions) ? explode(', ', $trainer->intervention_regions) : array(),
@@ -552,17 +602,18 @@ class TrainerRegistrationPublic {
             'hourly_rate' => $trainer->hourly_rate,
             'experience' => $trainer->experience,
             'bio' => $trainer->bio,
-            'linkedin_url' => $trainer->linkedin_url,
+            'linkedin_url' => $trainer->linkedin_url, // ✅ Peut être vide
             'created_at' => $trainer->created_at,
             'photo_url' => !empty($trainer->photo_file) ? $upload_dir['baseurl'] . '/' . $trainer->photo_file : '',
-            'cv_available' => !empty($trainer->cv_file)
+            'cv_available' => !empty($trainer->cv_file),
+            'has_linkedin' => !empty($trainer->linkedin_url) // ✅ Info sur LinkedIn
         );
         
         wp_send_json_success($profile_data);
     }
 
     /**
-     * Recherche simple (héritée)
+     * Recherche simple (héritée) avec anonymisation
      */
     public function handle_trainer_search() {
         if (!wp_verify_nonce($_POST['nonce'], 'trainer_registration_nonce')) {
@@ -572,6 +623,7 @@ class TrainerRegistrationPublic {
         global $wpdb;
         $search_term = sanitize_text_field($_POST['search_term']);
         $specialty_filter = sanitize_text_field($_POST['specialty_filter']);
+        $region_filter = sanitize_text_field($_POST['region_filter'] ?? ''); // ✅ NOUVEAU
         $table_name = $wpdb->prefix . 'trainer_registrations';
         
         $where_clause = "WHERE status = 'approved'";
@@ -591,6 +643,12 @@ class TrainerRegistrationPublic {
             $params[] = '%' . $specialty_filter . '%';
         }
         
+        // ✅ NOUVEAU : Filtre par région
+        if (!empty($region_filter) && $region_filter !== 'all') {
+            $where_clause .= " AND intervention_regions LIKE %s";
+            $params[] = '%' . $region_filter . '%';
+        }
+        
         $query = "SELECT * FROM $table_name $where_clause ORDER BY created_at DESC LIMIT 20";
         
         if (!empty($params)) {
@@ -599,9 +657,11 @@ class TrainerRegistrationPublic {
         
         $trainers = $wpdb->get_results($query);
         
-        // Anonymiser les noms dans les résultats
+        // ✅ Anonymiser les noms dans les résultats
         foreach ($trainers as $trainer) {
             $trainer->display_name = $this->get_anonymized_name($trainer->first_name, $trainer->last_name);
+            // Nettoyer les données sensibles
+            unset($trainer->email, $trainer->phone);
         }
         
         ob_start();
@@ -621,11 +681,12 @@ class TrainerRegistrationPublic {
             'html' => $html,
             'count' => count($trainers),
             'search_term' => $search_term,
-            'specialty_filter' => $specialty_filter
+            'specialty_filter' => $specialty_filter,
+            'region_filter' => $region_filter // ✅ NOUVEAU
         ));
     }
 
-    // ===== MÉTHODES HÉRITÉES (inchangées) =====
+    // ===== MÉTHODES HÉRITÉES =====
     
     private function email_exists($email) {
         global $wpdb;
@@ -806,7 +867,7 @@ class TrainerRegistrationPublic {
     }
 
     /**
-     * Envoi des notifications
+     * ✅ Envoi des notifications avec info LinkedIn
      */
     private function send_notifications($trainer_data, $trainer_id) {
         // Notification à l'admin
@@ -814,13 +875,18 @@ class TrainerRegistrationPublic {
             $admin_email = get_option('trainer_notification_email', get_option('admin_email'));
             $subject = 'Nouvelle inscription formateur - ' . $trainer_data['first_name'] . ' ' . $trainer_data['last_name'];
             
+            $linkedin_info = !empty($trainer_data['linkedin_url']) ? 
+                "LinkedIn: " . $trainer_data['linkedin_url'] . "\n" : 
+                "LinkedIn: Non renseigné\n";
+            
             $message = "Nouvelle inscription de formateur:\n\n";
             $message .= "Nom: " . $trainer_data['first_name'] . ' ' . $trainer_data['last_name'] . "\n";
             $message .= "Email: " . $trainer_data['email'] . "\n";
             $message .= "Téléphone: " . $trainer_data['phone'] . "\n";
             $message .= "Entreprise: " . $trainer_data['company'] . "\n";
+            $message .= $linkedin_info;
             $message .= "Spécialités: " . $trainer_data['specialties'] . "\n";
-            $message .= "Zones d'intervention: " . $trainer_data['intervention_regions'] . "\n"; // ✅ NOUVEAU
+            $message .= "Zones d'intervention: " . $trainer_data['intervention_regions'] . "\n";
             $message .= "Statut: " . $trainer_data['status'] . "\n\n";
             $message .= "Voir dans l'admin: " . admin_url('admin.php?page=trainer-registration');
 
@@ -831,59 +897,30 @@ class TrainerRegistrationPublic {
         $trainer_email = $trainer_data['email'];
         $subject = 'Confirmation d\'inscription - ' . get_bloginfo('name');
         
+        $linkedin_msg = !empty($trainer_data['linkedin_url']) ? 
+            "Votre profil LinkedIn renforce votre crédibilité auprès des recruteurs.\n\n" :
+            "Conseil : Vous pouvez ajouter votre profil LinkedIn plus tard pour augmenter votre visibilité.\n\n";
+        
         $message = "Bonjour " . $trainer_data['first_name'] . ",\n\n";
         
         if ($trainer_data['status'] === 'approved') {
             $message .= "Votre inscription en tant que formateur a été validée avec succès !\n\n";
-            $message .= "Votre profil est maintenant visible dans notre catalogue et vous pourrez bientôt recevoir des opportunités de formations.\n\n";
+            $message .= "Votre profil est maintenant visible dans notre catalogue (nom anonymisé pour votre confidentialité) et vous pourrez bientôt recevoir des opportunités de formations.\n\n";
         } else {
             $message .= "Nous avons bien reçu votre inscription en tant que formateur.\n\n";
             $message .= "Notre équipe va examiner votre profil et vous contactera bientôt.\n\n";
         }
         
+        $message .= $linkedin_msg;
+        $message .= "Zones d'intervention: " . $trainer_data['intervention_regions'] . "\n\n";
         $message .= "Merci de votre confiance !\n\n";
         $message .= "L'équipe " . get_bloginfo('name');
 
         wp_mail($trainer_email, $subject, $message);
     }
 
-    // ===== MÉTHODES HÉRITÉES POUR COMPATIBILITÉ =====
+    // ===== GESTION DU CONTACT =====
     
-    public function add_custom_css_variables() {
-        $primary_color = get_option('trpro_primary_color', '#000000');
-        $secondary_color = get_option('trpro_secondary_color', '#6b7280');
-        $accent_color = get_option('trpro_accent_color', '#fbbf24');
-        
-        echo "<style>
-        :root {
-            --trpro-primary-custom: {$primary_color};
-            --trpro-secondary-custom: {$secondary_color};
-            --trpro-accent-custom: {$accent_color};
-        }
-        </style>";
-    }
-    
-    public function add_body_classes($classes) {
-        global $post;
-        
-        if ($post) {
-            if (has_shortcode($post->post_content, 'trainer_home')) {
-                $classes[] = 'trpro-page-home';
-            }
-            if (has_shortcode($post->post_content, 'trainer_registration_form')) {
-                $classes[] = 'trpro-page-registration';
-            }
-            if (has_shortcode($post->post_content, 'trainer_list')) {
-                $classes[] = 'trpro-page-list';
-            }
-            if (has_shortcode($post->post_content, 'trainer_search')) {
-                $classes[] = 'trpro-page-search';
-            }
-        }
-        
-        return $classes;
-    }
-
     public function handle_trainer_contact() {
         if (!wp_verify_nonce($_POST['contact_nonce'], 'trainer_contact_nonce')) {
             wp_send_json_error(array('message' => 'Security check failed'));
@@ -921,6 +958,9 @@ class TrainerRegistrationPublic {
         if (!empty($trainer->intervention_regions)) {
             $message .= "Zones d'intervention : " . $trainer->intervention_regions . "\n";
         }
+        if (!empty($trainer->linkedin_url)) {
+            $message .= "LinkedIn : " . $trainer->linkedin_url . "\n";
+        }
         $message .= "\n--- Demandeur ---\n";
         $message .= "Nom : " . sanitize_text_field($_POST['contact_name']) . "\n";
         $message .= "Email : " . sanitize_email($_POST['contact_email']) . "\n";
@@ -936,5 +976,42 @@ class TrainerRegistrationPublic {
         } else {
             wp_send_json_error(array('message' => 'Erreur lors de l\'envoi du message'));
         }
+    }
+
+    // ===== MÉTHODES HÉRITÉES POUR COMPATIBILITÉ =====
+    
+    public function add_custom_css_variables() {
+        $primary_color = get_option('trpro_primary_color', '#000000');
+        $secondary_color = get_option('trpro_secondary_color', '#6b7280');
+        $accent_color = get_option('trpro_accent_color', '#fbbf24');
+        
+        echo "<style>
+        :root {
+            --trpro-primary-custom: {$primary_color};
+            --trpro-secondary-custom: {$secondary_color};
+            --trpro-accent-custom: {$accent_color};
+        }
+        </style>";
+    }
+    
+    public function add_body_classes($classes) {
+        global $post;
+        
+        if ($post) {
+            if (has_shortcode($post->post_content, 'trainer_home')) {
+                $classes[] = 'trpro-page-home';
+            }
+            if (has_shortcode($post->post_content, 'trainer_registration_form')) {
+                $classes[] = 'trpro-page-registration';
+            }
+            if (has_shortcode($post->post_content, 'trainer_list')) {
+                $classes[] = 'trpro-page-list';
+            }
+            if (has_shortcode($post->post_content, 'trainer_search')) {
+                $classes[] = 'trpro-page-search';
+            }
+        }
+        
+        return $classes;
     }
 }
