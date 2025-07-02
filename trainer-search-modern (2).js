@@ -1,605 +1,1797 @@
 /**
- * JavaScript moderne pour la recherche et liste des formateurs
+ * JavaScript COMPLET TRAINER REGISTRATION PRO - VERSION CORRIGÉE
  * 
- * Fichier: public/js/trainer-search-modern.js
- * ✅ Recherche AJAX réelle, sécurisée et performante
+ * Contient :
+ * ✅ Formulaire d'inscription modernisé (multi-étapes, validation temps réel)
+ * ✅ Recherche de formateurs avec AJAX
+ * ✅ Cartes de formateurs interactives
+ * ✅ Upload de fichiers avec drag & drop
+ * ✅ Animations et UX optimisées
+ * ✅ Système d'erreurs avancé avec scroll automatique
+ * ✅ Validation en temps réel style Stripe
+ * ✅ NOUVEAU : Validation des régions d'intervention
+ * ✅ NOUVEAU : LinkedIn optionnel
+ * ✅ NOUVEAU : Gestion des profils anonymisés
+ * 
+ * Version: 2.1 - Fonctionnalités complètes
  */
 
 (function($) {
     'use strict';
 
-    // ===== CONFIGURATION =====
-    const CONFIG = {
-        searchDelay: 300,
-        minSearchLength: 2,
-        maxRetries: 3,
-        animationDuration: 300,
-        endpoints: {
-            search: trainer_ajax.ajax_url,
-            nonce: trainer_ajax.nonce
-        }
-    };
+    // ===== VÉRIFICATIONS INITIALES =====
+    if (typeof $ === 'undefined') {
+        console.error('❌ Trainer Registration Pro: jQuery non trouvé');
+        return;
+    }
 
-    // ===== VARIABLES GLOBALES =====
-    let searchTimeout;
-    let currentRequest;
-    let searchCache = new Map();
-    let isSearching = false;
+    if (typeof trainer_ajax === 'undefined') {
+        console.error('❌ Trainer Registration Pro: Configuration AJAX manquante');
+        return;
+    }
 
-    // ===== ÉLÉMENTS DOM =====
-    const elements = {
-        searchInput: $('#trpro-live-search'),
-        specialtyFilter: $('#trpro-specialty-filter'),
-        searchClear: $('.trpro-search-clear'),
-        resultsContainer: $('#trpro-trainers-grid'),
-        loadingState: $('#trpro-search-loading'),
-        emptyState: $('#trpro-empty-state'),
-        resultsHeader: $('#trpro-results-header'),
-        resultsTitle: $('#trpro-results-title'),
-        resultsCount: $('#trpro-results-count'),
-        viewButtons: $('.trpro-view-btn'),
-        popularTags: $('.trpro-tag')
-    };
-
-    // ===== INITIALISATION =====
     $(document).ready(function() {
-        console.log('🚀 Trainer Search Modern: Initialisation...');
-        
-        initEventListeners();
-        initModalHandlers();
-        initViewSwitcher();
-        loadInitialData();
-        
-        console.log('✅ Trainer Search Modern: Prêt');
-    });
+        console.log('🚀 Trainer Registration Pro: Initialisation complète...');
 
-    // ===== ÉVÉNEMENTS =====
-    function initEventListeners() {
-        // Recherche en temps réel
-        elements.searchInput.on('input', debounce(handleSearchInput, CONFIG.searchDelay));
+        // ===== VARIABLES GLOBALES =====
+        let currentStep = 1;
+        const totalSteps = 4;
+        let formSubmitting = false;
+        let validationTimeout = null;
+        let searchTimeout;
         
-        // Changement de filtre spécialité
-        elements.specialtyFilter.on('change', handleFilterChange);
+        // Cache des éléments DOM
+        const elements = {
+            form: $('#trpro-trainer-registration-form'),
+            steps: $('.trpro-form-step'),
+            progressSteps: $('.trpro-progress-step'),
+            nextBtn: $('#trpro-next-step'),
+            prevBtn: $('#trpro-prev-step'),
+            submitBtn: $('#trpro-submit-form'),
+            messages: $('#trpro-form-messages'),
+            loading: $('#trpro-form-loading')
+        };
+
+        // ===== INITIALISATION GLOBALE =====
         
-        // Bouton de clear
-        elements.searchClear.on('click', clearSearch);
+        // Formulaire d'inscription
+        if (elements.form.length > 0) {
+            initFormNavigation();
+            initRealTimeValidation();
+            initFileUpload();
+            initCheckboxes();
+            initFormAnimations();
+            initRegionsValidation(); // ✅ NOUVEAU
+            showStep(1);
+            console.log('✅ Formulaire d\'inscription initialisé avec régions');
+        }
+
+        // Recherche de formateurs
+        if ($('#trpro-trainer-search').length > 0) {
+            initSearch();
+            console.log('✅ Recherche de formateurs initialisée');
+        }
+
+        // Cartes de formateurs
+        if ($('.trpro-trainer-card').length > 0) {
+            initTrainerCards();
+            console.log('✅ Cartes de formateurs initialisées');
+        }
+
+        // Profils détaillés
+        initProfileModals(); // ✅ NOUVEAU
+
+        // Animations générales
+        initGlobalAnimations();
+
+        // ===== FORMULAIRE D'INSCRIPTION - NAVIGATION MULTI-ÉTAPES MODERNE =====
         
-        // Tags populaires
-        elements.popularTags.on('click', handleTagClick);
-        
-        // Recherche sur Enter
-        elements.searchInput.on('keypress', function(e) {
-            if (e.which === 13) {
+        function initFormNavigation() {
+            // Événements des boutons
+            elements.nextBtn.on('click', handleNextStep);
+            elements.prevBtn.on('click', handlePrevStep);
+            elements.submitBtn.on('click', handleSubmit);
+            elements.form.on('submit', function(e) {
                 e.preventDefault();
-                performSearch(true);
-            }
-        });
+                return false;
+            });
 
-        // Détection de changement pour afficher/masquer le bouton clear
-        elements.searchInput.on('input', toggleClearButton);
-    }
-
-    function initModalHandlers() {
-        // Boutons de détails des cartes
-        $(document).on('click', '.trpro-btn-details', handleTrainerDetails);
-        
-        // Fermeture des modals
-        $(document).on('click', '.trpro-modal-close, .trpro-modal-overlay', function(e) {
-            if (e.target === this) {
-                closeModal($(this).closest('.trpro-modal-overlay'));
-            }
-        });
-        
-        // Échappement pour fermer
-        $(document).on('keydown', function(e) {
-            if (e.key === 'Escape') {
-                $('.trpro-modal-overlay.active').each(function() {
-                    closeModal($(this));
-                });
-            }
-        });
-    }
-
-    function initViewSwitcher() {
-        elements.viewButtons.on('click', function() {
-            const view = $(this).data('view');
-            switchView(view);
-        });
-    }
-
-    // ===== GESTION DE LA RECHERCHE =====
-    function handleSearchInput() {
-        const query = elements.searchInput.val().trim();
-        
-        if (query.length === 0) {
-            clearSearch();
-            return;
-        }
-        
-        if (query.length >= CONFIG.minSearchLength) {
-            performSearch();
-        }
-    }
-
-    function handleFilterChange() {
-        performSearch();
-    }
-
-    function handleTagClick() {
-        const searchTerm = $(this).data('search');
-        elements.searchInput.val(searchTerm);
-        
-        // Animation du tag
-        $(this).addClass('active');
-        setTimeout(() => $(this).removeClass('active'), 200);
-        
-        performSearch(true);
-    }
-
-    function clearSearch() {
-        elements.searchInput.val('');
-        elements.specialtyFilter.val('');
-        elements.searchClear.hide();
-        
-        // Recharger les données initiales
-        loadInitialData();
-    }
-
-    function toggleClearButton() {
-        const hasValue = elements.searchInput.val().length > 0;
-        elements.searchClear.toggle(hasValue);
-    }
-
-    // ===== RECHERCHE AJAX =====
-    function performSearch(immediate = false) {
-        const query = elements.searchInput.val().trim();
-        const specialty = elements.specialtyFilter.val();
-        
-        // Créer une clé de cache
-        const cacheKey = `${query}|${specialty}`;
-        
-        // Vérifier le cache
-        if (searchCache.has(cacheKey)) {
-            displayResults(searchCache.get(cacheKey));
-            return;
-        }
-        
-        // Annuler la requête précédente
-        if (currentRequest) {
-            currentRequest.abort();
-        }
-        
-        // Délai pour éviter trop de requêtes
-        clearTimeout(searchTimeout);
-        
-        const delay = immediate ? 0 : CONFIG.searchDelay;
-        
-        searchTimeout = setTimeout(() => {
-            executeSearch(query, specialty, cacheKey);
-        }, delay);
-    }
-
-    function executeSearch(query, specialty, cacheKey) {
-        if (isSearching) return;
-        
-        isSearching = true;
-        showLoadingState();
-        
-        const searchData = {
-            action: 'search_trainers_modern',
-            nonce: CONFIG.endpoints.nonce,
-            search_term: query,
-            specialty_filter: specialty,
-            per_page: 12,
-            page: 1
-        };
-        
-        console.log('🔍 Recherche:', searchData);
-        
-        currentRequest = $.ajax({
-            url: CONFIG.endpoints.search,
-            type: 'POST',
-            data: searchData,
-            timeout: 10000,
-            success: function(response) {
-                console.log('📥 Réponse reçue:', response);
-                
-                if (response.success && response.data) {
-                    const results = response.data;
-                    
-                    // Mettre en cache
-                    searchCache.set(cacheKey, results);
-                    
-                    // Afficher les résultats
-                    displayResults(results);
-                    
-                    // Mise à jour de l'historique/URL
-                    updateURL(query, specialty);
-                    
-                } else {
-                    console.error('❌ Erreur dans la réponse:', response);
-                    showErrorState(response.data?.message || 'Erreur de recherche');
+            // Navigation clavier
+            $(document).on('keydown', function(e) {
+                if (elements.form.is(':visible') && e.key === 'Enter' && !e.shiftKey) {
+                    const activeElement = document.activeElement;
+                    if (activeElement.tagName !== 'TEXTAREA') {
+                        e.preventDefault();
+                        if (currentStep < totalSteps) {
+                            handleNextStep();
+                        } else {
+                            handleSubmit();
+                        }
+                    }
                 }
-            },
-            error: function(xhr, status, error) {
-                console.error('❌ Erreur AJAX:', { xhr, status, error });
-                
-                if (status !== 'abort') {
-                    showErrorState('Erreur de connexion. Veuillez réessayer.');
-                }
-            },
-            complete: function() {
-                isSearching = false;
-                hideLoadingState();
-                currentRequest = null;
-            }
-        });
-    }
-
-    function loadInitialData() {
-        showLoadingState();
-        
-        $.ajax({
-            url: CONFIG.endpoints.search,
-            type: 'POST',
-            data: {
-                action: 'get_all_trainers',
-                nonce: CONFIG.endpoints.nonce,
-                per_page: 12,
-                page: 1
-            },
-            success: function(response) {
-                if (response.success && response.data) {
-                    displayResults(response.data);
-                    
-                    // Mettre à jour le titre
-                    elements.resultsTitle.text('Nos Formateurs Experts');
-                } else {
-                    showErrorState('Erreur lors du chargement des formateurs');
-                }
-            },
-            error: function() {
-                showErrorState('Erreur de connexion');
-            },
-            complete: function() {
-                hideLoadingState();
-            }
-        });
-    }
-
-    // ===== AFFICHAGE DES RÉSULTATS =====
-    function displayResults(results) {
-        const { trainers, total, search_term, specialty_filter } = results;
-        
-        console.log('📊 Affichage de', trainers?.length || 0, 'résultats sur', total);
-        
-        hideLoadingState();
-        hideEmptyState();
-        showResultsHeader();
-        
-        if (!trainers || trainers.length === 0) {
-            showEmptyState();
-            elements.resultsContainer.empty();
-            return;
+            });
         }
-        
-        // Mise à jour du header
-        updateResultsHeader(total, search_term, specialty_filter);
-        
-        // Générer le HTML des cartes
-        const cardsHTML = trainers.map(trainer => generateTrainerCard(trainer)).join('');
-        
-        // Animation d'entrée
-        elements.resultsContainer.fadeOut(200, function() {
-            $(this).html(cardsHTML).fadeIn(300);
+
+        function handleNextStep() {
+            console.log(`🔄 Tentative passage à l'étape ${currentStep + 1}`);
             
-            // Réinitialiser les animations
-            setTimeout(() => {
-                elements.resultsContainer.find('.trpro-trainer-card-modern').each(function(index) {
-                    $(this).css({
-                        'animation-delay': `${index * 0.1}s`,
-                        'animation-name': 'slideInUp'
-                    });
-                });
-            }, 50);
-        });
-    }
+            if (validateCurrentStep()) {
+                if (currentStep < totalSteps) {
+                    currentStep++;
+                    showStep(currentStep);
+                    console.log(`✅ Passage réussi à l'étape ${currentStep}`);
+                }
+            } else {
+                console.log(`❌ Validation échouée pour l'étape ${currentStep}`);
+            }
+        }
 
-    function generateTrainerCard(trainer) {
-        const trainerId = String(trainer.id).padStart(4, '0');
-        const specialties = trainer.specialties.split(',').map(s => s.trim()).slice(0, 3);
-        const remainingCount = Math.max(0, trainer.specialties.split(',').length - 3);
+        function handlePrevStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                showStep(currentStep);
+                console.log(`⬅️ Retour à l'étape ${currentStep}`);
+            }
+        }
+
+        function handleSubmit() {
+            console.log('📤 Tentative de soumission...');
+            
+            if (formSubmitting) {
+                console.log('⚠️ Soumission déjà en cours');
+                return;
+            }
+            
+            if (validateCurrentStep()) {
+                submitForm();
+            }
+        }
+
+        function showStep(step) {
+            console.log(`📄 Affichage étape ${step}`);
+            
+            // Masquer toutes les étapes
+            elements.steps.removeClass('active').hide();
+            
+            // Afficher l'étape courante avec animation
+            const $currentStep = $(`.trpro-form-step[data-step="${step}"]`);
+            $currentStep.addClass('active').fadeIn(300);
+            
+            // Mise à jour de la barre de progression
+            updateProgressBar(step);
+            
+            // Gestion des boutons
+            elements.prevBtn.toggle(step > 1);
+            
+            if (step === totalSteps) {
+                elements.nextBtn.hide();
+                elements.submitBtn.show();
+                generateSummary();
+            } else {
+                elements.nextBtn.show();
+                elements.submitBtn.hide();
+            }
+            
+            // Scroll fluide vers le formulaire
+            scrollToForm();
+            
+            // Focus sur le premier champ
+            setTimeout(() => {
+                $currentStep.find('input, textarea, select').first().focus();
+            }, 350);
+        }
+
+        function updateProgressBar(step) {
+            elements.progressSteps.removeClass('active completed');
+            
+            for (let i = 1; i <= step; i++) {
+                $(`.trpro-progress-step[data-step="${i}"]`).addClass('active');
+            }
+            
+            for (let i = 1; i < step; i++) {
+                $(`.trpro-progress-step[data-step="${i}"]`).addClass('completed');
+            }
+        }
+
+        function scrollToForm() {
+            const container = $('.trpro-registration-container');
+            if (container.length > 0) {
+                $('html, body').animate({
+                    scrollTop: container.offset().top - 100
+                }, 400, 'easeOutCubic');
+            }
+        }
+
+        // ===== VALIDATION MODERNE EN TEMPS RÉEL =====
         
-        const specialtyIcons = {
-            'administration-systeme': 'fas fa-server',
-            'reseaux': 'fas fa-network-wired',
-            'cloud': 'fab fa-aws',
-            'devops': 'fas fa-infinity',
-            'securite': 'fas fa-shield-alt',
-            'telecoms': 'fas fa-satellite-dish',
-            'developpement': 'fas fa-code',
-            'bases-donnees': 'fas fa-database'
-        };
+        function initRealTimeValidation() {
+            // Validation pendant la saisie (debounced)
+            elements.form.find('input, textarea, select').on('input', function() {
+                const $field = $(this);
+                clearTimeout(validationTimeout);
+                validationTimeout = setTimeout(() => {
+                    validateField($field);
+                }, 300);
+            });
+
+            // Validation à la perte de focus
+            elements.form.find('input, textarea, select').on('blur', function() {
+                validateField($(this));
+            });
+
+            // Validation des checkboxes
+            elements.form.find('input[type="checkbox"]').on('change', function() {
+                const $field = $(this);
+                const name = $field.attr('name');
+                
+                if (name === 'specialties[]') {
+                    validateSpecialties();
+                } else if (name === 'intervention_regions[]') {
+                    validateRegions(); // ✅ NOUVEAU
+                } else if (name === 'rgpd_consent') {
+                    validateRgpd();
+                }
+            });
+        }
+
+        // ===== NOUVEAU : VALIDATION DES RÉGIONS D'INTERVENTION =====
         
-        const experiencePreview = trainer.experience ? 
-            trainer.experience.substring(0, 100) + (trainer.experience.length > 100 ? '...' : '') : '';
+        function initRegionsValidation() {
+            // Validation en temps réel des régions
+            $('input[name="intervention_regions[]"]').on('change', function() {
+                validateRegions();
+                updateRegionsCounter();
+            });
+            
+            // Compteur visuel
+            updateRegionsCounter();
+        }
+
+        function validateRegions() {
+            const $checked = $('input[name="intervention_regions[]"]:checked');
+            const $container = $('.trpro-regions-grid');
+            const $errorMsg = $('#trpro-regions-error');
+            
+            $container.removeClass('trpro-error-highlight');
+            $errorMsg.text('');
+            
+            if ($checked.length === 0) {
+                $container.addClass('trpro-error-highlight');
+                $errorMsg.text('Veuillez sélectionner au moins une zone d\'intervention');
+                return false;
+            }
+            
+            // Suggestion si trop de régions sélectionnées
+            if ($checked.length > 8) {
+                $errorMsg.text('Conseil : Sélectionnez vos zones principales pour une meilleure visibilité').css('color', '#f59e0b');
+                return true; // Pas bloquant, juste un conseil
+            }
+            
+            return true;
+        }
+
+        function updateRegionsCounter() {
+            const $checked = $('input[name="intervention_regions[]"]:checked');
+            const count = $checked.length;
+            
+            // Créer ou mettre à jour le compteur
+            let $counter = $('.trpro-regions-counter');
+            if ($counter.length === 0) {
+                $counter = $('<div class="trpro-regions-counter"></div>');
+                $('.trpro-regions-grid').after($counter);
+            }
+            
+            if (count > 0) {
+                const text = count === 1 ? '1 zone sélectionnée' : `${count} zones sélectionnées`;
+                const emoji = count <= 3 ? '📍' : count <= 6 ? '🗺️' : '🌍';
+                $counter.html(`<span class="trpro-counter-text">${emoji} ${text}</span>`).show();
+            } else {
+                $counter.hide();
+            }
+        }
+
+        function validateCurrentStep() {
+            const $currentStepElement = $(`.trpro-form-step[data-step="${currentStep}"]`);
+            const errors = [];
+            
+            console.log(`🔍 Validation étape ${currentStep}`);
+            
+            // Nettoyer les erreurs précédentes
+            clearStepErrors();
+            
+            // Validation selon l'étape
+            switch (currentStep) {
+                case 1:
+                    errors.push(...validateStep1($currentStepElement));
+                    break;
+                case 2:
+                    errors.push(...validateStep2($currentStepElement));
+                    break;
+                case 3:
+                    errors.push(...validateStep3($currentStepElement));
+                    break;
+                case 4:
+                    errors.push(...validateStep4($currentStepElement));
+                    break;
+            }
+            
+            if (errors.length > 0) {
+                displayErrors(errors);
+                scrollToFirstError();
+                return false;
+            }
+            
+            return true;
+        }
+
+        // ===== VALIDATIONS PAR ÉTAPE CORRIGÉES =====
         
-        const photoHTML = trainer.photo_file ? 
-            `<img src="${trainer.photo_url}" alt="Photo du formateur #${trainerId}" loading="lazy">` :
-            `<div class="trpro-avatar-placeholder"><i class="fas fa-user-graduate"></i></div>`;
+        function validateStep1($step) {
+            const errors = [];
+            
+            // Prénom
+            const firstName = $step.find('#trpro-first-name').val().trim();
+            if (!firstName) {
+                errors.push({
+                    field: 'first_name',
+                    selector: '#trpro-first-name',
+                    message: 'Le prénom est obligatoire'
+                });
+            } else if (firstName.length < 2) {
+                errors.push({
+                    field: 'first_name',
+                    selector: '#trpro-first-name',
+                    message: 'Le prénom doit contenir au moins 2 caractères'
+                });
+            } else if (!/^[a-zA-ZÀ-ÿ\s-']+$/.test(firstName)) {
+                errors.push({
+                    field: 'first_name',
+                    selector: '#trpro-first-name',
+                    message: 'Le prénom contient des caractères non autorisés'
+                });
+            }
+            
+            // Nom
+            const lastName = $step.find('#trpro-last-name').val().trim();
+            if (!lastName) {
+                errors.push({
+                    field: 'last_name',
+                    selector: '#trpro-last-name',
+                    message: 'Le nom est obligatoire'
+                });
+            } else if (lastName.length < 2) {
+                errors.push({
+                    field: 'last_name',
+                    selector: '#trpro-last-name',
+                    message: 'Le nom doit contenir au moins 2 caractères'
+                });
+            } else if (!/^[a-zA-ZÀ-ÿ\s-']+$/.test(lastName)) {
+                errors.push({
+                    field: 'last_name',
+                    selector: '#trpro-last-name',
+                    message: 'Le nom contient des caractères non autorisés'
+                });
+            }
+            
+            // Email
+            const email = $step.find('#trpro-email').val().trim();
+            if (!email) {
+                errors.push({
+                    field: 'email',
+                    selector: '#trpro-email',
+                    message: 'L\'adresse email est obligatoire'
+                });
+            } else if (!isValidEmail(email)) {
+                errors.push({
+                    field: 'email',
+                    selector: '#trpro-email',
+                    message: 'Format d\'email invalide'
+                });
+            }
+            
+            // Téléphone
+            const phone = $step.find('#trpro-phone').val().trim();
+            if (!phone) {
+                errors.push({
+                    field: 'phone',
+                    selector: '#trpro-phone',
+                    message: 'Le numéro de téléphone est obligatoire'
+                });
+            } else if (!isValidPhone(phone)) {
+                errors.push({
+                    field: 'phone',
+                    selector: '#trpro-phone',
+                    message: 'Format de téléphone invalide (format français attendu)'
+                });
+            }
+            
+            // ✅ CORRIGÉ : LinkedIn optionnel - seulement valider si rempli
+            const linkedin = $step.find('#trpro-linkedin-url').val().trim();
+            if (linkedin && !linkedin.includes('linkedin.com')) {
+                errors.push({
+                    field: 'linkedin_url',
+                    selector: '#trpro-linkedin-url',
+                    message: 'URL LinkedIn invalide (doit contenir linkedin.com)'
+                });
+            }
+            
+            return errors;
+        }
+
+        function validateStep2($step) {
+            const errors = [];
+            
+            // Spécialités
+            const $specialties = $step.find('input[name="specialties[]"]:checked');
+            if ($specialties.length === 0) {
+                errors.push({
+                    field: 'specialties',
+                    selector: '.trpro-checkbox-grid',
+                    message: 'Sélectionnez au moins une spécialité'
+                });
+            } else if ($specialties.length > 5) {
+                errors.push({
+                    field: 'specialties',
+                    selector: '.trpro-checkbox-grid',
+                    message: 'Maximum 5 spécialités recommandées'
+                });
+            }
+            
+            // ✅ NOUVEAU : Validation des régions d'intervention
+            const $regions = $step.find('input[name="intervention_regions[]"]:checked');
+            if ($regions.length === 0) {
+                errors.push({
+                    field: 'intervention_regions',
+                    selector: '.trpro-regions-grid',
+                    message: 'Sélectionnez au moins une zone d\'intervention'
+                });
+            }
+            
+            // Expérience
+            const experience = $step.find('#trpro-experience').val().trim();
+            if (!experience) {
+                errors.push({
+                    field: 'experience',
+                    selector: '#trpro-experience',
+                    message: 'Description de l\'expérience obligatoire'
+                });
+            } else if (experience.length < 50) {
+                errors.push({
+                    field: 'experience',
+                    selector: '#trpro-experience',
+                    message: `Description trop courte (${experience.length}/50 caractères minimum)`
+                });
+            } else if (experience.length > 1000) {
+                errors.push({
+                    field: 'experience',
+                    selector: '#trpro-experience',
+                    message: `Description trop longue (${experience.length}/1000 caractères maximum)`
+                });
+            }
+            
+            return errors;
+        }
+
+        function validateStep3($step) {
+            const errors = [];
+            
+            // CV obligatoire
+            const cvFile = $step.find('#trpro-cv-file')[0].files[0];
+            if (!cvFile) {
+                errors.push({
+                    field: 'cv_file',
+                    selector: '#trpro-cv-file',
+                    message: 'Le CV est obligatoire'
+                });
+            } else {
+                // Vérification taille
+                if (cvFile.size > 5 * 1024 * 1024) {
+                    errors.push({
+                        field: 'cv_file',
+                        selector: '#trpro-cv-file',
+                        message: `CV trop volumineux (${formatFileSize(cvFile.size)}). Maximum: 5MB`
+                    });
+                }
+                
+                // Vérification type
+                const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                if (!allowedTypes.includes(cvFile.type)) {
+                    errors.push({
+                        field: 'cv_file',
+                        selector: '#trpro-cv-file',
+                        message: 'Format de CV non supporté. Utilisez PDF, DOC ou DOCX'
+                    });
+                }
+            }
+            
+            // Photo (optionnelle mais si présente, doit être valide)
+            const photoFile = $step.find('#trpro-photo-file')[0].files[0];
+            if (photoFile) {
+                if (photoFile.size > 2 * 1024 * 1024) {
+                    errors.push({
+                        field: 'photo_file',
+                        selector: '#trpro-photo-file',
+                        message: `Photo trop volumineuse (${formatFileSize(photoFile.size)}). Maximum: 2MB`
+                    });
+                }
+                
+                const allowedPhotoTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                if (!allowedPhotoTypes.includes(photoFile.type)) {
+                    errors.push({
+                        field: 'photo_file',
+                        selector: '#trpro-photo-file',
+                        message: 'Format de photo non supporté. Utilisez JPG, PNG ou GIF'
+                    });
+                }
+            }
+            
+            return errors;
+        }
+
+        function validateStep4($step) {
+            const errors = [];
+            
+            // Consentement RGPD obligatoire
+            const rgpdConsent = $step.find('#trpro-rgpd-consent').prop('checked');
+            if (!rgpdConsent) {
+                errors.push({
+                    field: 'rgpd_consent',
+                    selector: '#trpro-rgpd-consent',
+                    message: 'Le consentement RGPD est obligatoire'
+                });
+            }
+            
+            return errors;
+        }
+
+        // ===== VALIDATION INDIVIDUELLE DES CHAMPS =====
         
-        const specialtiesHTML = specialties.map(specialty => {
-            const icon = specialtyIcons[specialty] || 'fas fa-cog';
-            const label = specialty.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
-            return `
-                <div class="trpro-specialty-item">
-                    <i class="${icon}"></i>
-                    <span>${label}</span>
+        function validateField($field) {
+            const fieldName = $field.attr('name');
+            const value = $field.val().trim();
+            const $formGroup = $field.closest('.trpro-form-group');
+            const $errorMsg = $field.siblings('.trpro-error-message');
+            
+            // Reset de l'état
+            $formGroup.removeClass('error success');
+            $errorMsg.text('').css('opacity', 0);
+            
+            let isValid = true;
+            let errorMessage = '';
+            
+            // Validation selon le type de champ
+            switch (fieldName) {
+                case 'first_name':
+                case 'last_name':
+                    if ($field.prop('required') && !value) {
+                        isValid = false;
+                        errorMessage = `Le ${fieldName === 'first_name' ? 'prénom' : 'nom'} est obligatoire`;
+                    } else if (value && value.length < 2) {
+                        isValid = false;
+                        errorMessage = 'Minimum 2 caractères';
+                    } else if (value && !/^[a-zA-ZÀ-ÿ\s-']+$/.test(value)) {
+                        isValid = false;
+                        errorMessage = 'Caractères non autorisés';
+                    }
+                    break;
+                    
+                case 'email':
+                    if ($field.prop('required') && !value) {
+                        isValid = false;
+                        errorMessage = 'Email obligatoire';
+                    } else if (value && !isValidEmail(value)) {
+                        isValid = false;
+                        errorMessage = 'Format email invalide';
+                    }
+                    break;
+                    
+                case 'phone':
+                    if ($field.prop('required') && !value) {
+                        isValid = false;
+                        errorMessage = 'Téléphone obligatoire';
+                    } else if (value && !isValidPhone(value)) {
+                        isValid = false;
+                        errorMessage = 'Format téléphone invalide';
+                    }
+                    break;
+                    
+                case 'experience':
+                    if ($field.prop('required') && !value) {
+                        isValid = false;
+                        errorMessage = 'Description obligatoire';
+                    } else if (value && value.length < 50) {
+                        isValid = false;
+                        errorMessage = `${value.length}/50 caractères minimum`;
+                    } else if (value && value.length > 1000) {
+                        isValid = false;
+                        errorMessage = `${value.length}/1000 caractères maximum`;
+                    }
+                    break;
+                    
+                case 'linkedin_url':
+                    // ✅ CORRIGÉ : LinkedIn optionnel
+                    if (value && !value.includes('linkedin.com')) {
+                        isValid = false;
+                        errorMessage = 'URL LinkedIn invalide';
+                    }
+                    break;
+            }
+            
+            // Application du résultat
+            if (isValid && value) {
+                $formGroup.addClass('success');
+                showSuccessIcon($field);
+            } else if (!isValid) {
+                $formGroup.addClass('error');
+                $errorMsg.text(errorMessage).css('opacity', 1);
+                showErrorIcon($field);
+            }
+            
+            return isValid;
+        }
+
+        function validateSpecialties() {
+            const $checked = $('input[name="specialties[]"]:checked');
+            const $container = $('.trpro-checkbox-grid');
+            const $errorMsg = $('#trpro-specialties-error');
+            
+            $container.removeClass('trpro-error-highlight');
+            $errorMsg.text('');
+            
+            if ($checked.length === 0) {
+                $container.addClass('trpro-error-highlight');
+                $errorMsg.text('Sélectionnez au moins une spécialité');
+                return false;
+            } else if ($checked.length > 5) {
+                $container.addClass('trpro-error-highlight');
+                $errorMsg.text('Maximum 5 spécialités recommandées');
+                return false;
+            }
+            
+            return true;
+        }
+
+        function validateRgpd() {
+            const $checkbox = $('#trpro-rgpd-consent');
+            const $container = $('.trpro-required-consent');
+            const $errorMsg = $('#trpro-rgpd-error');
+            
+            $container.removeClass('error');
+            $errorMsg.text('');
+            
+            if (!$checkbox.prop('checked')) {
+                $container.addClass('error');
+                $errorMsg.text('Consentement RGPD obligatoire');
+                return false;
+            }
+            
+            return true;
+        }
+
+        // ===== UTILITAIRES DE VALIDATION =====
+        
+        function isValidEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return regex.test(email);
+        }
+
+        function isValidPhone(phone) {
+            // Format français: 01 23 45 67 89, +33 1 23 45 67 89, etc.
+            const cleanPhone = phone.replace(/[\s.-]/g, '');
+            const regex = /^(?:(?:\+|00)33|0)[1-9](?:[0-9]{8})$/;
+            return regex.test(cleanPhone);
+        }
+
+        // ===== AFFICHAGE DES ERREURS MODERNE =====
+        
+        function displayErrors(errors) {
+            clearStepErrors();
+            
+            if (errors.length === 0) return;
+            
+            // Créer le conteneur d'erreurs
+            const $errorContainer = $(`
+                <div class="trpro-step-errors">
+                    <div class="trpro-error-header">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Veuillez corriger les erreurs suivantes :</strong>
+                    </div>
+                    <ul class="trpro-error-list"></ul>
+                </div>
+            `);
+            
+            const $errorList = $errorContainer.find('.trpro-error-list');
+            
+            errors.forEach(error => {
+                const $errorItem = $(`
+                    <li class="trpro-error-item">
+                        <span class="trpro-error-text">
+                            <i class="fas fa-times-circle"></i>
+                            ${error.message}
+                        </span>
+                        <button type="button" class="trpro-error-goto" data-selector="${error.selector}">
+                            Corriger
+                        </button>
+                    </li>
+                `);
+                
+                $errorList.append($errorItem);
+                
+                // Mettre en évidence le champ
+                highlightErrorField(error.selector);
+            });
+            
+            // Insérer le conteneur
+            const $currentStep = $(`.trpro-form-step[data-step="${currentStep}"]`);
+            $currentStep.prepend($errorContainer);
+            
+            // Animation d'entrée
+            $errorContainer.hide().slideDown(300);
+            
+            // Gérer les clics "Corriger"
+            $errorContainer.find('.trpro-error-goto').on('click', function() {
+                const selector = $(this).data('selector');
+                scrollToField(selector);
+                $(selector).focus();
+            });
+        }
+
+        function highlightErrorField(selector) {
+            const $field = $(selector);
+            const $formGroup = $field.closest('.trpro-form-group');
+            
+            $formGroup.addClass('error');
+            $field.addClass('trpro-field-error-highlight');
+            
+            // Pour les spécialités
+            if (selector === '.trpro-checkbox-grid') {
+                $(selector).addClass('trpro-error-highlight');
+            }
+            
+            // ✅ NOUVEAU : Pour les régions
+            if (selector === '.trpro-regions-grid') {
+                $(selector).addClass('trpro-error-highlight');
+            }
+            
+            // Pour RGPD
+            if (selector === '#trpro-rgpd-consent') {
+                $('.trpro-required-consent').addClass('error');
+            }
+        }
+
+        function clearStepErrors() {
+            $('.trpro-step-errors').remove();
+            $('.trpro-form-group').removeClass('error success');
+            $('.trpro-error-message').text('').css('opacity', 0);
+            $('.trpro-field-error-highlight').removeClass('trpro-field-error-highlight');
+            $('.trpro-error-highlight').removeClass('trpro-error-highlight');
+            $('.trpro-required-consent').removeClass('error');
+            $('#trpro-specialties-error, #trpro-rgpd-error, #trpro-regions-error').text('');
+        }
+
+        function scrollToFirstError() {
+            const $firstError = $('.trpro-step-errors');
+            if ($firstError.length > 0) {
+                $('html, body').animate({
+                    scrollTop: $firstError.offset().top - 120
+                }, 500, 'easeOutCubic');
+            }
+        }
+
+        function scrollToField(selector) {
+            const $field = $(selector);
+            if ($field.length > 0) {
+                $('html, body').animate({
+                    scrollTop: $field.offset().top - 150
+                }, 400, 'easeOutCubic');
+            }
+        }
+
+        // ===== ICÔNES DE VALIDATION =====
+        
+        function showSuccessIcon($field) {
+            const $formGroup = $field.closest('.trpro-form-group');
+            $formGroup.find('.validation-icon').remove();
+            $formGroup.append('<i class="fas fa-check-circle validation-icon success-icon"></i>');
+        }
+
+        function showErrorIcon($field) {
+            const $formGroup = $field.closest('.trpro-form-group');
+            $formGroup.find('.validation-icon').remove();
+            $formGroup.append('<i class="fas fa-times-circle validation-icon error-icon"></i>');
+        }
+
+        // ===== GESTION DES FICHIERS MODERNE =====
+        
+        function initFileUpload() {
+            // Clic sur zone d'upload
+            $(document).on('click', '.trpro-file-upload-area', function(e) {
+                e.preventDefault();
+                const targetInput = $(this).data('target');
+                if (targetInput) {
+                    $(`#${targetInput}`).trigger('click');
+                }
+            });
+
+            // Drag & Drop avec animations
+            $('.trpro-file-upload-area')
+                .on('dragover', function(e) {
+                    e.preventDefault();
+                    $(this).addClass('dragover');
+                })
+                .on('dragleave', function(e) {
+                    e.preventDefault();
+                    $(this).removeClass('dragover');
+                })
+                .on('drop', function(e) {
+                    e.preventDefault();
+                    $(this).removeClass('dragover');
+                    
+                    const files = e.originalEvent.dataTransfer.files;
+                    const targetInput = $(this).data('target');
+                    
+                    if (files.length > 0 && targetInput) {
+                        const inputElement = $(`#${targetInput}`)[0];
+                        if (inputElement) {
+                            inputElement.files = files;
+                            $(inputElement).trigger('change');
+                        }
+                    }
+                });
+
+            // Changement de fichier
+            $(document).on('change', 'input[type="file"]', function() {
+                const file = this.files[0];
+                const fileId = $(this).attr('id');
+                const $preview = $(`#${fileId}-preview`);
+                
+                if (file) {
+                    showFilePreview(file, $preview, fileId);
+                    validateFileField($(this), file);
+                } else {
+                    $preview.removeClass('active').empty();
+                }
+            });
+
+            // Suppression de fichier
+            $(document).on('click', '.trpro-file-remove', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const targetId = $(this).data('target');
+                const $input = $(`#${targetId}`);
+                $input.val('');
+                $(`#${targetId}-preview`).removeClass('active').empty();
+                
+                // Reset de la validation
+                $input.closest('.trpro-form-group').removeClass('error success');
+            });
+        }
+
+        function validateFileField($input, file) {
+            const $formGroup = $input.closest('.trpro-form-group');
+            const $errorMsg = $input.siblings('.trpro-error-message');
+            const fieldName = $input.attr('name');
+            
+            $formGroup.removeClass('error success');
+            $errorMsg.text('');
+            
+            let isValid = true;
+            let errorMessage = '';
+            
+            if (fieldName === 'cv_file') {
+                if (file.size > 5 * 1024 * 1024) {
+                    isValid = false;
+                    errorMessage = `Fichier trop volumineux (${formatFileSize(file.size)}). Maximum: 5MB`;
+                } else {
+                    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                    if (!allowedTypes.includes(file.type)) {
+                        isValid = false;
+                        errorMessage = 'Format non supporté. Utilisez PDF, DOC ou DOCX';
+                    }
+                }
+            } else if (fieldName === 'photo_file') {
+                if (file.size > 2 * 1024 * 1024) {
+                    isValid = false;
+                    errorMessage = `Image trop volumineuse (${formatFileSize(file.size)}). Maximum: 2MB`;
+                } else {
+                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                    if (!allowedTypes.includes(file.type)) {
+                        isValid = false;
+                        errorMessage = 'Format non supporté. Utilisez JPG, PNG ou GIF';
+                    }
+                }
+            }
+            
+            if (isValid) {
+                $formGroup.addClass('success');
+            } else {
+                $formGroup.addClass('error');
+                $errorMsg.text(errorMessage);
+            }
+        }
+
+        function showFilePreview(file, $preview, fileId) {
+            let fileIcon = 'fas fa-file';
+            if (file.type.includes('pdf')) fileIcon = 'fas fa-file-pdf';
+            else if (file.type.includes('image')) fileIcon = 'fas fa-file-image';
+            else if (file.type.includes('word')) fileIcon = 'fas fa-file-word';
+            
+            const fileSize = formatFileSize(file.size);
+            
+            const previewHtml = `
+                <div class="trpro-file-info">
+                    <i class="${fileIcon}"></i>
+                    <div class="trpro-file-details">
+                        <div class="trpro-file-name">${escapeHtml(file.name)}</div>
+                        <div class="trpro-file-size">${fileSize}</div>
+                    </div>
+                    <button type="button" class="trpro-file-remove" data-target="${fileId}">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
             `;
-        }).join('');
-        
-        const remainingHTML = remainingCount > 0 ? 
-            `<div class="trpro-specialty-item trpro-specialty-more">
-                <i class="fas fa-plus"></i>
-                <span>+${remainingCount}</span>
-            </div>` : '';
-        
-        return `
-            <article class="trpro-trainer-card-modern" data-trainer-id="${trainer.id}">
-                <div class="trpro-card-header">
-                    <div class="trpro-trainer-avatar">
-                        ${photoHTML}
-                        <div class="trpro-status-badge trpro-badge-confirmed">
-                            <span>Vérifié</span>
-                        </div>
-                    </div>
-                    <div class="trpro-verification-badges">
-                        <div class="trpro-badge trpro-verified" title="Profil vérifié">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        ${trainer.cv_file ? '<div class="trpro-badge trpro-cv-badge" title="CV disponible"><i class="fas fa-file-pdf"></i></div>' : ''}
-                    </div>
-                </div>
-                
-                <div class="trpro-card-body">
-                    <div class="trpro-trainer-identity">
-                        <h3 class="trpro-trainer-title">
-                            Formateur Expert
-                            <span class="trpro-trainer-id">#${trainerId}</span>
-                        </h3>
-                        ${trainer.company ? `<div class="trpro-trainer-company"><i class="fas fa-building"></i><span>${trainer.company}</span></div>` : ''}
-                    </div>
-                    
-                    <div class="trpro-specialties-section">
-                        <div class="trpro-specialties-grid">
-                            ${specialtiesHTML}
-                            ${remainingHTML}
-                        </div>
-                    </div>
-                    
-                    ${experiencePreview ? `
-                        <div class="trpro-experience-preview">
-                            <div class="trpro-experience-text">${experiencePreview}</div>
-                        </div>
-                    ` : ''}
-                    
-                    <div class="trpro-trainer-meta">
-                        ${trainer.availability ? `<div class="trpro-meta-item"><i class="fas fa-calendar-check"></i><span>${trainer.availability.replace('-', ' ')}</span></div>` : ''}
-                        ${trainer.hourly_rate ? `<div class="trpro-meta-item"><i class="fas fa-euro-sign"></i><span>${trainer.hourly_rate}</span></div>` : ''}
-                        <div class="trpro-meta-item">
-                            <i class="fas fa-calendar-plus"></i>
-                            <span>Inscrit récemment</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="trpro-card-footer">
-                    <div class="trpro-action-buttons">
-                        <a href="mailto:${trainer_ajax.contact_email}?subject=Contact formateur %23${trainerId}" 
-                           class="trpro-btn trpro-btn-primary">
-                            <i class="fas fa-envelope"></i>
-                            <span>Contacter</span>
-                        </a>
-                        <button class="trpro-btn trpro-btn-outline trpro-btn-details" data-trainer-id="${trainer.id}">
-                            <i class="fas fa-user"></i>
-                            <span>Profil</span>
-                        </button>
-                    </div>
-                    
-                    <div class="trpro-additional-links">
-                        ${trainer.linkedin_url ? `<a href="${trainer.linkedin_url}" target="_blank" class="trpro-social-link"><i class="fab fa-linkedin"></i></a>` : ''}
-                    </div>
-                </div>
-                
-                <div class="trpro-popularity-indicator">
-                    <div class="trpro-popularity-bar" style="width: ${Math.floor(Math.random() * 35) + 60}%;"></div>
-                </div>
-            </article>
-        `;
-    }
-
-    function updateResultsHeader(total, searchTerm, specialtyFilter) {
-        let title = 'Résultats de recherche';
-        let count = `${total} formateur${total > 1 ? 's' : ''} trouvé${total > 1 ? 's' : ''}`;
-        
-        if (searchTerm) {
-            title = `Recherche : "${searchTerm}"`;
-            if (specialtyFilter) {
-                title += ` dans ${specialtyFilter.replace('-', ' ')}`;
-            }
-        } else if (specialtyFilter) {
-            title = `Spécialité : ${specialtyFilter.replace('-', ' ')}`;
-        } else {
-            title = 'Nos Formateurs Experts';
-            count = `${total} formateur${total > 1 ? 's' : ''} disponible${total > 1 ? 's' : ''}`;
+            
+            $preview.html(previewHtml).addClass('active');
         }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // ===== GESTION DES CHECKBOXES MODERNE =====
         
-        elements.resultsTitle.text(title);
-        elements.resultsCount.text(count);
-    }
+        function initCheckboxes() {
+            // Checkboxes spécialités
+            $(document).on('click', '.trpro-checkbox-item', function(e) {
+                if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                    return;
+                }
+                
+                const $checkbox = $(this).find('input[type="checkbox"]');
+                $checkbox.prop('checked', !$checkbox.prop('checked')).trigger('change');
+            });
+            
+            // Checkboxes consentement
+            $(document).on('click', '.trpro-consent-wrapper', function(e) {
+                if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                    return;
+                }
+                
+                const $checkbox = $(this).find('input[type="checkbox"]');
+                $checkbox.prop('checked', !$checkbox.prop('checked')).trigger('change');
+            });
+        }
 
-    // ===== GESTION DES ÉTATS =====
-    function showLoadingState() {
-        elements.loadingState.fadeIn(CONFIG.animationDuration);
-        elements.emptyState.hide();
-        elements.resultsHeader.hide();
-    }
-
-    function hideLoadingState() {
-        elements.loadingState.fadeOut(CONFIG.animationDuration);
-    }
-
-    function showEmptyState() {
-        elements.emptyState.fadeIn(CONFIG.animationDuration);
-        elements.resultsHeader.hide();
-    }
-
-    function hideEmptyState() {
-        elements.emptyState.hide();
-    }
-
-    function showResultsHeader() {
-        elements.resultsHeader.fadeIn(CONFIG.animationDuration);
-    }
-
-    function showErrorState(message) {
-        hideLoadingState();
+        // ===== GÉNÉRATION DU RÉSUMÉ AMÉLIORÉ =====
         
-        const errorHTML = `
-            <div class="trpro-error-state">
-                <div class="trpro-error-icon">
-                    <i class="fas fa-exclamation-triangle"></i>
+        function generateSummary() {
+            const $summary = $('#trpro-registration-summary');
+            $summary.empty();
+            
+            console.log('📋 Génération du résumé...');
+            
+            // Informations personnelles
+            addSummaryItem($summary, 'Nom complet', `${$('#trpro-first-name').val()} ${$('#trpro-last-name').val()}`);
+            addSummaryItem($summary, 'Email', $('#trpro-email').val());
+            addSummaryItem($summary, 'Téléphone', $('#trpro-phone').val());
+            
+            const company = $('#trpro-company').val();
+            if (company) {
+                addSummaryItem($summary, 'Entreprise', company);
+            }
+            
+            // ✅ NOUVEAU : LinkedIn si renseigné
+            const linkedin = $('#trpro-linkedin-url').val();
+            if (linkedin) {
+                addSummaryItem($summary, 'LinkedIn', linkedin);
+            }
+            
+            // Spécialités
+            const specialties = [];
+            $('input[name="specialties[]"]:checked').each(function() {
+                const label = $(this).siblings('label').text().trim();
+                specialties.push(label);
+            });
+            if (specialties.length > 0) {
+                addSummaryItem($summary, 'Spécialités', specialties.join(', '));
+            }
+            
+            // ✅ NOUVEAU : Zones d'intervention
+            const regions = [];
+            $('input[name="intervention_regions[]"]:checked').each(function() {
+                const label = $(this).siblings('label').text().trim();
+                regions.push(label);
+            });
+            if (regions.length > 0) {
+                addSummaryItem($summary, 'Zones d\'intervention', regions.join(', '));
+            }
+            
+            // Disponibilité
+            const availability = $('#trpro-availability').val();
+            if (availability) {
+                const availabilityText = $('#trpro-availability option:selected').text();
+                addSummaryItem($summary, 'Disponibilité', availabilityText);
+            }
+            
+            // Tarif horaire
+            const hourlyRate = $('#trpro-hourly-rate').val();
+            if (hourlyRate) {
+                addSummaryItem($summary, 'Tarif horaire', hourlyRate);
+            }
+            
+            // Fichiers
+            const cvFile = $('#trpro-cv-file')[0].files[0];
+            if (cvFile) {
+                addSummaryItem($summary, 'CV', `${cvFile.name} (${formatFileSize(cvFile.size)})`);
+            }
+            
+            const photoFile = $('#trpro-photo-file')[0].files[0];
+            if (photoFile) {
+                addSummaryItem($summary, 'Photo', `${photoFile.name} (${formatFileSize(photoFile.size)})`);
+            }
+        }
+
+        function addSummaryItem($container, label, value) {
+            if (!value) return;
+            
+            const $item = $(`
+                <div class="trpro-summary-item">
+                    <div class="trpro-summary-label">${escapeHtml(label)}</div>
+                    <div class="trpro-summary-value">${escapeHtml(value)}</div>
                 </div>
-                <h3>Erreur de recherche</h3>
-                <p>${message}</p>
-                <button class="trpro-btn trpro-btn-primary" onclick="location.reload()">
-                    <i class="fas fa-refresh"></i>
-                    Réessayer
-                </button>
-            </div>
-        `;
+            `);
+            
+            $container.append($item);
+        }
+
+        // ===== SOUMISSION DU FORMULAIRE =====
         
-        elements.resultsContainer.html(errorHTML);
-        showResultsHeader();
-    }
+        function submitForm() {
+            console.log('📤 Soumission du formulaire...');
+            formSubmitting = true;
+            
+            // Afficher le loading
+            elements.loading.fadeIn(200);
+            elements.submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Envoi en cours...');
+            
+            // Préparer les données
+            const formData = new FormData(elements.form[0]);
+            formData.append('action', 'submit_trainer_registration');
+            formData.append('nonce', trainer_ajax.nonce);
+            
+            $.ajax({
+                url: trainer_ajax.ajax_url,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                timeout: 30000,
+                success: function(response) {
+                    console.log('✅ Réponse serveur:', response);
+                    handleFormResponse(response);
+                },
+                error: function(xhr, status, error) {
+                    console.error('❌ Erreur AJAX:', {xhr, status, error});
+                    handleFormError(xhr, status, error);
+                },
+                complete: function() {
+                    elements.loading.fadeOut(200);
+                    elements.submitBtn.prop('disabled', false).html('<i class="fas fa-paper-plane"></i> Envoyer ma candidature');
+                    formSubmitting = false;
+                }
+            });
+        }
 
-    // ===== GESTION DES MODALS =====
-    function handleTrainerDetails() {
-        const trainerId = $(this).data('trainer-id');
-        showTrainerModal(trainerId);
-    }
+        function handleFormResponse(response) {
+            if (response.success) {
+                showMessage('success', response.data.message || 'Inscription réussie !');
+                
+                // Reset du formulaire
+                elements.form[0].reset();
+                $('.trpro-file-preview').removeClass('active').empty();
+                $('.trpro-regions-counter').hide(); // ✅ NOUVEAU
+                currentStep = 1;
+                showStep(currentStep);
+                
+                scrollToMessage();
+                
+                if (response.data.redirect) {
+                    setTimeout(() => {
+                        window.location.href = response.data.redirect;
+                    }, 3000);
+                }
+            } else {
+                const errorMessage = response.data?.message || 'Erreur lors de l\'inscription';
+                showMessage('error', errorMessage);
+            }
+        }
 
-    function showTrainerModal(trainerId) {
-        // Ici on pourrait charger plus de détails via AJAX
-        const modal = $(`#trpro-modal-${trainerId}`);
-        if (modal.length) {
-            modal.addClass('active');
+        function handleFormError(xhr, status, error) {
+            let errorMessage = 'Erreur de connexion. Veuillez réessayer.';
+            
+            if (status === 'timeout') {
+                errorMessage = 'La requête a expiré. Veuillez réessayer.';
+            } else if (xhr.responseJSON?.data?.message) {
+                errorMessage = xhr.responseJSON.data.message;
+            }
+            
+            showMessage('error', errorMessage);
+        }
+
+        function showMessage(type, message) {
+            const icon = type === 'success' ? 'check-circle' : 'exclamation-circle';
+            
+            elements.messages
+                .removeClass('success error')
+                .addClass(type)
+                .html(`<i class="fas fa-${icon}"></i> ${escapeHtml(message)}`)
+                .fadeIn(300);
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    elements.messages.fadeOut(300);
+                }, 5000);
+            }
+        }
+
+        function scrollToMessage() {
+            if (elements.messages.length > 0) {
+                $('html, body').animate({
+                    scrollTop: elements.messages.offset().top - 100
+                }, 400);
+            }
+        }
+
+        // ===== RECHERCHE DE FORMATEURS =====
+        
+        function initSearch() {
+            const $searchInput = $('#trpro-trainer-search-input');
+            const $searchBtn = $('#trpro-search-trainers-btn');
+            const $specialtyFilter = $('#trpro-specialty-filter');
+            const $searchResults = $('#trpro-search-results');
+            const $searchLoading = $('#trpro-search-loading');
+            
+            // Événements de recherche
+            $searchBtn.on('click', performSearch);
+            $specialtyFilter.on('change', performSearch);
+            
+            // Recherche en temps réel avec debounce
+            $searchInput.on('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(function() {
+                    if ($searchInput.val().length >= 3 || $searchInput.val().length === 0) {
+                        performSearch();
+                    }
+                }, 500);
+            });
+            
+            // Recherche sur Enter
+            $searchInput.on('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    performSearch();
+                }
+            });
+            
+            // Tags de suggestion
+            $('.trpro-suggestion-tag').on('click', function(e) {
+                e.preventDefault();
+                const searchTerm = $(this).data('search');
+                const category = $(this).data('category');
+                
+                $searchInput.val(searchTerm);
+                if (category && category !== 'all') {
+                    $specialtyFilter.val(category);
+                }
+                
+                // Effet visuel
+                $(this).css('transform', 'scale(0.95)');
+                setTimeout(() => {
+                    $(this).css('transform', '');
+                    performSearch();
+                }, 150);
+            });
+            
+            function performSearch() {
+                const query = $searchInput.val().trim();
+                const specialty = $specialtyFilter.val();
+                
+                if (!query && specialty === 'all') {
+                    showSearchPlaceholder();
+                    return;
+                }
+                
+                console.log('🔍 Recherche:', {query, specialty});
+                
+                // Afficher loading
+                $searchResults.hide();
+                $searchLoading.show();
+                
+                // Requête AJAX
+                $.ajax({
+                    url: trainer_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'search_trainers',
+                        nonce: trainer_ajax.nonce,
+                        search_term: query,
+                        specialty_filter: specialty
+                    },
+                    success: function(response) {
+                        console.log('✅ Résultats recherche:', response);
+                        handleSearchResults(response);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('❌ Erreur recherche:', error);
+                        showSearchError();
+                    },
+                    complete: function() {
+                        $searchLoading.hide();
+                        $searchResults.show();
+                    }
+                });
+            }
+            
+            function handleSearchResults(response) {
+                if (response.success && response.data.html) {
+                    $searchResults.html(response.data.html);
+                    
+                    // Animation d'entrée
+                    $searchResults.css({opacity: 0, transform: 'translateY(20px)'});
+                    $searchResults.animate({opacity: 1}, 400);
+                    $searchResults.css('transform', 'translateY(0)');
+                    
+                } else {
+                    showNoResults();
+                }
+            }
+            
+            function showSearchPlaceholder() {
+                $searchResults.html(`
+                    <div class="trpro-search-placeholder">
+                        <div class="trpro-placeholder-content">
+                            <div class="trpro-placeholder-icon">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <h4>Commencez votre recherche</h4>
+                            <p>Utilisez la barre de recherche pour trouver des formateurs experts</p>
+                        </div>
+                    </div>
+                `).show();
+            }
+            
+            function showNoResults() {
+                $searchResults.html(`
+                    <div class="trpro-no-results">
+                        <div class="trpro-empty-icon">
+                            <i class="fas fa-search-minus"></i>
+                        </div>
+                        <h3>Aucun résultat trouvé</h3>
+                        <p>Essayez de modifier vos critères de recherche</p>
+                    </div>
+                `).show();
+            }
+            
+            function showSearchError() {
+                $searchResults.html(`
+                    <div class="trpro-search-error">
+                        <div class="trpro-error-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <h3>Erreur de recherche</h3>
+                        <p>Impossible d'effectuer la recherche. Veuillez réessayer.</p>
+                    </div>
+                `).show();
+            }
+        }
+
+        // ===== CARTES DE FORMATEURS =====
+        
+        function initTrainerCards() {
+            // Bouton détails
+            $(document).on('click', '.trpro-btn-info, .trpro-btn-details', function(e) {
+                e.preventDefault();
+                const trainerId = $(this).data('trainer-id');
+                showTrainerModal(trainerId);
+            });
+            
+            // Fermeture modal
+            $(document).on('click', '.trpro-modal-close, .trpro-modal-backdrop', function() {
+                const trainerId = $(this).data('trainer-id') || $(this).closest('.trpro-trainer-modal').attr('id')?.replace('trpro-modal-', '');
+                if (trainerId) {
+                    hideTrainerModal(trainerId);
+                }
+            });
+            
+            // Fermeture par Escape
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    $('.trpro-trainer-modal:visible, .trpro-modal-overlay:visible').each(function() {
+                        const trainerId = $(this).attr('id')?.replace('trpro-modal-', '');
+                        if (trainerId) {
+                            hideTrainerModal(trainerId);
+                        }
+                    });
+                }
+            });
+            
+            function showTrainerModal(trainerId) {
+                const $modal = $(`#trpro-modal-${trainerId}`);
+                if ($modal.length > 0) {
+                    $modal.fadeIn(300).addClass('active');
+                    $('body').addClass('modal-open');
+                }
+            }
+            
+            function hideTrainerModal(trainerId) {
+                const $modal = $(`#trpro-modal-${trainerId}`);
+                if ($modal.length > 0) {
+                    $modal.fadeOut(300).removeClass('active');
+                    $('body').removeClass('modal-open');
+                }
+            }
+        }
+
+        // ===== NOUVEAU : GESTION DES PROFILS DÉTAILLÉS =====
+        
+        function initProfileModals() {
+            // Boutons pour afficher le profil détaillé
+            $(document).on('click', '.trpro-btn-profile', function(e) {
+                e.preventDefault();
+                const trainerId = $(this).data('trainer-id');
+                loadTrainerProfile(trainerId);
+            });
+        }
+
+        function loadTrainerProfile(trainerId) {
+            // Afficher un modal de chargement
+            showProfileLoadingModal();
+            
+            // Requête AJAX pour récupérer le profil détaillé
+            $.ajax({
+                url: trainer_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'get_trainer_profile',
+                    nonce: trainer_ajax.nonce,
+                    trainer_id: trainerId
+                },
+                success: function(response) {
+                    hideProfileLoadingModal();
+                    
+                    if (response.success && response.data) {
+                        showProfileModal(response.data);
+                    } else {
+                        showProfileError(response.data?.message || 'Erreur lors du chargement du profil');
+                    }
+                },
+                error: function() {
+                    hideProfileLoadingModal();
+                    showProfileError('Erreur de connexion');
+                }
+            });
+        }
+
+        function showProfileLoadingModal() {
+            const loadingHTML = `
+                <div class="trpro-modal-overlay active" id="trpro-profile-loading-modal">
+                    <div class="trpro-modal-container">
+                        <div class="trpro-modal-content">
+                            <div class="trpro-modal-loading">
+                                <div class="trpro-spinner"></div>
+                                <p>Chargement du profil...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(loadingHTML);
             $('body').addClass('modal-open');
-        } else {
-            // Créer et afficher un modal générique
-            createGenericModal(trainerId);
         }
-    }
 
-    function createGenericModal(trainerId) {
-        const modalHTML = `
-            <div class="trpro-modal-overlay active" id="trpro-modal-${trainerId}">
-                <div class="trpro-modal-container">
-                    <div class="trpro-modal-header">
-                        <h4><i class="fas fa-user-graduate"></i> Formateur Expert #${String(trainerId).padStart(4, '0')}</h4>
-                        <button class="trpro-modal-close"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="trpro-modal-content">
-                        <div class="trpro-modal-section">
-                            <h5><i class="fas fa-info-circle"></i> Informations</h5>
-                            <p>Pour obtenir plus d'informations sur ce formateur, veuillez nous contacter directement.</p>
+        function hideProfileLoadingModal() {
+            $('#trpro-profile-loading-modal').remove();
+            $('body').removeClass('modal-open');
+        }
+
+        function showProfileModal(profileData) {
+            const regions = profileData.intervention_regions || [];
+            const specialties = profileData.specialties || [];
+            
+            const modalHTML = `
+                <div class="trpro-modal-overlay active" id="trpro-profile-modal-${profileData.id}">
+                    <div class="trpro-modal-container">
+                        <div class="trpro-modal-header">
+                            <div class="trpro-modal-title">
+                                <div class="trpro-modal-avatar">
+                                    ${profileData.photo_url ? 
+                                        `<img src="${profileData.photo_url}" alt="Photo du formateur">` :
+                                        `<div class="trpro-modal-avatar-placeholder"><i class="fas fa-user-graduate"></i></div>`
+                                    }
+                                </div>
+                                <div class="trpro-modal-info">
+                                    <h4>${escapeHtml(profileData.display_name)}</h4>
+                                    <p>Formateur Expert #${String(profileData.id).padStart(4, '0')}</p>
+                                    ${profileData.company ? `<p class="trpro-modal-company">${escapeHtml(profileData.company)}</p>` : ''}
+                                </div>
+                            </div>
+                            <button class="trpro-modal-close"><i class="fas fa-times"></i></button>
                         </div>
-                        <div class="trpro-modal-actions">
-                            <a href="mailto:${trainer_ajax.contact_email}?subject=Contact formateur %23${String(trainerId).padStart(4, '0')}" 
-                               class="trpro-btn trpro-btn-primary trpro-btn-large">
-                                <i class="fas fa-envelope"></i>
-                                Contacter par Email
-                            </a>
+                        
+                        <div class="trpro-modal-content">
+                            ${regions.length > 0 ? `
+                                <div class="trpro-modal-section">
+                                    <h5><i class="fas fa-map-marker-alt"></i> Zones d'intervention</h5>
+                                    <div class="trpro-modal-zones">
+                                        ${regions.map(region => `
+                                            <span class="trpro-zone-chip">
+                                                <i class="fas fa-map-pin"></i>
+                                                ${escapeHtml(region)}
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="trpro-modal-section">
+                                <h5><i class="fas fa-cogs"></i> Compétences techniques</h5>
+                                <div class="trpro-detailed-specialties">
+                                    ${specialties.map(specialty => `
+                                        <div class="trpro-specialty-chip">
+                                            <i class="fas fa-cog"></i>
+                                            <span>${escapeHtml(specialty)}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            
+                            ${profileData.availability || profileData.hourly_rate ? `
+                                <div class="trpro-modal-section">
+                                    <h5><i class="fas fa-clock"></i> Disponibilité & Tarifs</h5>
+                                    <div class="trpro-availability-info">
+                                        ${profileData.availability ? `
+                                            <div class="trpro-info-item">
+                                                <strong>Disponibilité :</strong>
+                                                <span>${escapeHtml(profileData.availability)}</span>
+                                            </div>
+                                        ` : ''}
+                                        ${profileData.hourly_rate ? `
+                                            <div class="trpro-info-item">
+                                                <strong>Tarif horaire :</strong>
+                                                <span>${escapeHtml(profileData.hourly_rate)}</span>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${profileData.experience ? `
+                                <div class="trpro-modal-section">
+                                    <h5><i class="fas fa-briefcase"></i> Expérience professionnelle</h5>
+                                    <div class="trpro-experience-full">
+                                        ${escapeHtml(profileData.experience).replace(/\n/g, '<br>')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${profileData.bio ? `
+                                <div class="trpro-modal-section">
+                                    <h5><i class="fas fa-user"></i> Présentation</h5>
+                                    <div class="trpro-bio-full">
+                                        ${escapeHtml(profileData.bio).replace(/\n/g, '<br>')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="trpro-modal-actions">
+                                <a href="mailto:${trainer_ajax.contact_email}?subject=Contact formateur %23${String(profileData.id).padStart(4, '0')}" 
+                                   class="trpro-btn trpro-btn-primary trpro-btn-large">
+                                    <i class="fas fa-envelope"></i>
+                                    Contacter par Email
+                                </a>
+                                
+                                ${profileData.linkedin_url ? `
+                                    <a href="${profileData.linkedin_url}" 
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="trpro-btn trpro-btn-outline trpro-btn-large">
+                                        <i class="fab fa-linkedin"></i>
+                                        Voir LinkedIn
+                                    </a>
+                                ` : ''}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        $('body').append(modalHTML);
-        $('body').addClass('modal-open');
-    }
+            `;
+            
+            $('body').append(modalHTML);
+            $('body').addClass('modal-open');
+            
+            // Gestionnaire de fermeture
+            $(`#trpro-profile-modal-${profileData.id} .trpro-modal-close`).on('click', function() {
+                $(`#trpro-profile-modal-${profileData.id}`).fadeOut(300, function() {
+                    $(this).remove();
+                    $('body').removeClass('modal-open');
+                });
+            });
+        }
 
-    function closeModal(modal) {
-        modal.removeClass('active');
-        $('body').removeClass('modal-open');
-        
-        setTimeout(() => {
-            modal.remove();
-        }, 300);
-    }
+        function showProfileError(message) {
+            const errorHTML = `
+                <div class="trpro-modal-overlay active" id="trpro-profile-error-modal">
+                    <div class="trpro-modal-container">
+                        <div class="trpro-modal-header">
+                            <h4>Erreur</h4>
+                            <button class="trpro-modal-close"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="trpro-modal-content">
+                            <div class="trpro-error-state">
+                                <div class="trpro-error-icon">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                </div>
+                                <p>${escapeHtml(message)}</p>
+                                <button class="trpro-btn trpro-btn-primary" onclick="$('#trpro-profile-error-modal').remove(); $('body').removeClass('modal-open');">
+                                    Fermer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(errorHTML);
+            $('body').addClass('modal-open');
+            
+            $('#trpro-profile-error-modal .trpro-modal-close').on('click', function() {
+                $('#trpro-profile-error-modal').remove();
+                $('body').removeClass('modal-open');
+            });
+        }
 
-    // ===== CHANGEMENT DE VUE =====
-    function switchView(view) {
-        elements.viewButtons.removeClass('active');
-        $(`.trpro-view-btn[data-view="${view}"]`).addClass('active');
+        // ===== ANIMATIONS MODERNES =====
         
-        elements.resultsContainer
-            .removeClass('trpro-view-grid trpro-view-list')
-            .addClass(`trpro-view-${view}`);
-        
-        // Sauvegarder la préférence
-        localStorage.setItem('trpro-view-preference', view);
-    }
-
-    // ===== UTILITAIRES =====
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
+        function initFormAnimations() {
+            // Animation d'easing personnalisée
+            $.easing.easeOutCubic = function(x, t, b, c, d) {
+                return c*((t=t/d-1)*t*t + 1) + b;
             };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
+            
+            // Animation des champs au focus
+            elements.form.find('input, textarea, select').on('focus', function() {
+                $(this).closest('.trpro-form-group').addClass('focused');
+            }).on('blur', function() {
+                $(this).closest('.trpro-form-group').removeClass('focused');
+            });
+        }
+
+        // ===== ANIMATIONS GÉNÉRALES =====
+        
+        function initGlobalAnimations() {
+            // Intersection Observer pour les animations
+            if (typeof IntersectionObserver !== 'undefined') {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('trpro-fade-in');
+                        }
+                    });
+                }, { threshold: 0.1 });
+
+                // Observer les éléments animables
+                $('.trpro-specialty-card, .trpro-card, .trpro-trainer-card').each(function() {
+                    observer.observe(this);
+                });
+            }
+            
+            // Parallax simple pour le hero
+            $(window).on('scroll', function() {
+                const scrollTop = $(this).scrollTop();
+                const $heroBackground = $('.trpro-hero-background');
+                
+                if ($heroBackground.length > 0 && scrollTop < $(window).height()) {
+                    $heroBackground.css('transform', `translateY(${scrollTop * 0.5}px)`);
+                }
+            });
+        }
+
+        // ===== UTILITAIRES =====
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        // ===== RESPONSIVE HELPERS =====
+        
+        function isMobile() {
+            return window.innerWidth <= 768;
+        }
+
+        function isTablet() {
+            return window.innerWidth <= 1024 && window.innerWidth > 768;
+        }
+
+        // ===== PERFORMANCE OPTIMIZATIONS =====
+        
+        // Debounce function
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Throttle function
+        function throttle(func, limit) {
+            let inThrottle;
+            return function() {
+                const args = arguments;
+                const context = this;
+                if (!inThrottle) {
+                    func.apply(context, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            };
+        }
+
+        // ===== EVENT LISTENERS GLOBAUX =====
+        
+        // Gestion des clics outside pour fermer les modales
+        $(document).on('click', '.trpro-modal-overlay', function(e) {
+            if (e.target === this) {
+                $(this).fadeOut(300, function() {
+                    $(this).remove();
+                });
+                $('body').removeClass('modal-open');
+            }
+        });
+
+        // Gestion responsive
+        $(window).on('resize', debounce(function() {
+            // Ajustements responsive si nécessaire
+            if (isMobile() && $('.trpro-registration-form').is(':visible')) {
+                console.log('📱 Mode mobile détecté');
+            }
+        }, 250));
+
+        // ===== STYLES CSS POUR LES NOUVEAUX ÉLÉMENTS =====
+        
+        // Ajouter les styles CSS pour le compteur de régions
+        $('<style>').text(`
+            .trpro-regions-counter {
+                margin-top: 12px;
+                text-align: center;
+                padding: 8px 16px;
+                background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+                color: white;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: 600;
+                display: none;
+                animation: slideDown 0.3s ease-out;
+            }
+            
+            .trpro-counter-text {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            
+            .trpro-zone-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: #f0f9ff;
+                color: #0369a1;
+                padding: 8px 12px;
+                border-radius: 20px;
+                border: 1px solid #0ea5e9;
+                font-size: 0.875rem;
+                font-weight: 500;
+                margin: 4px;
+            }
+            
+            .trpro-zone-chip i {
+                font-size: 0.8rem;
+            }
+        `).appendTo('head');
+
+        // ===== DEBUG HELPER (DÉVELOPPEMENT) =====
+        
+        if (window.location.hostname === 'localhost' || window.location.hostname.includes('dev')) {
+            window.trainerDebug = {
+                // Formulaire
+                currentStep: () => currentStep,
+                validateStep: () => validateCurrentStep(),
+                formData: () => new FormData(elements.form[0]),
+                resetForm: () => {
+                    elements.form[0].reset();
+                    $('.trpro-regions-counter').hide();
+                    currentStep = 1;
+                    showStep(1);
+                },
+                showStep: (step) => showStep(step),
+                
+                // Recherche
+                performSearch: () => {
+                    if (typeof performSearch === 'function') {
+                        performSearch();
+                    }
+                },
+                
+                // Profils
+                showProfile: (trainerId) => loadTrainerProfile(trainerId),
+                
+                // Utilitaires
+                isMobile: () => isMobile(),
+                isTablet: () => isTablet(),
+                
+                // État global
+                getState: () => ({
+                    currentStep,
+                    formSubmitting,
+                    searchTimeout,
+                    validationTimeout
+                })
+            };
+            console.log('🛠️ Debug helper disponible: window.trainerDebug');
+        }
+
+        // ===== INITIALISATION FINALE =====
+        
+        console.log('✅ Trainer Registration Pro: Initialisation complète terminée');
+        console.log('📊 Composants initialisés:', {
+            formulaire: elements.form.length > 0,
+            recherche: $('#trpro-trainer-search').length > 0,
+            cartes: $('.trpro-trainer-card').length,
+            profils: true,
+            regions: true,
+            animations: true
+        });
+        
+        // Notification de succès d'initialisation
+        if (elements.form.length > 0) {
+            console.log('🎯 Formulaire prêt - Navigation multi-étapes activée avec régions');
+        }
+        
+        // Vérification de la compatibilité
+        const features = {
+            intersectionObserver: typeof IntersectionObserver !== 'undefined',
+            localStorage: typeof Storage !== 'undefined',
+            formData: typeof FormData !== 'undefined',
+            fetch: typeof fetch !== 'undefined'
         };
-    }
-
-    function updateURL(query, specialty) {
-        if (history.pushState) {
-            const url = new URL(window.location);
-            
-            if (query) {
-                url.searchParams.set('search', query);
-            } else {
-                url.searchParams.delete('search');
-            }
-            
-            if (specialty) {
-                url.searchParams.set('specialty', specialty);
-            } else {
-                url.searchParams.delete('specialty');
-            }
-            
-            history.pushState(null, '', url);
+        
+        console.log('🔧 Support navigateur:', features);
+        
+        if (!features.formData) {
+            console.warn('⚠️ FormData non supporté - Upload de fichiers limité');
         }
-    }
-
-    // ===== FONCTIONS GLOBALES =====
-    window.resetSearch = clearSearch;
-    
-    // ===== GESTION DES ERREURS =====
-    window.addEventListener('error', function(e) {
-        console.error('❌ Erreur JavaScript:', e.error);
-    });
-
-    // ===== CLEANUP =====
-    $(window).on('beforeunload', function() {
-        if (currentRequest) {
-            currentRequest.abort();
+        
+        if (!features.intersectionObserver) {
+            console.warn('⚠️ IntersectionObserver non supporté - Animations limitées');
         }
-        clearTimeout(searchTimeout);
+
     });
 
 })(jQuery);
