@@ -1,6 +1,6 @@
 <?php
 /**
- * Template formulaire d'inscription CORRIGÉ - SANS CSS/JS INLINE
+ * Template formulaire d'inscription CORRIGÉ avec régions d'intervention
  * 
  * Fichier: public/partials/trainer-registration-form.php
  */
@@ -24,7 +24,7 @@ if (!defined('ABSPATH')) {
         </div>
         <div class="trpro-progress-step" data-step="2">
             <span>2</span>
-            <small>Expérience professionnelle</small>
+            <small>Expertise & Zones</small>
         </div>
         <div class="trpro-progress-step" data-step="3">
             <span>3</span>
@@ -79,19 +79,19 @@ if (!defined('ABSPATH')) {
             </div>
             
             <div class="trpro-form-group">
-                <label for="trpro-linkedin-url">Profil LinkedIn</label>
+                <label for="trpro-linkedin-url">Profil LinkedIn (optionnel)</label>
                 <input type="url" id="trpro-linkedin-url" name="linkedin_url" placeholder="https://linkedin.com/in/votre-profil">
+                <small class="trpro-field-help">Le profil LinkedIn n'est pas obligatoire mais recommandé</small>
             </div>
         </div>
 
-        <!-- ÉTAPE 2: Expérience professionnelle -->
+        <!-- ÉTAPE 2: Expertise & Zones d'intervention -->
         <div class="trpro-form-step" data-step="2">
-            <h2 class="trpro-step-title">Expertise & Expérience</h2>
+            <h2 class="trpro-step-title">Expertise & Zones d'Intervention</h2>
             
             <div class="trpro-form-group">
                 <label>Spécialités * (sélectionnez toutes qui s'appliquent)</label>
                 <div class="trpro-checkbox-grid">
-                    <!-- ✅ STRUCTURE CORRIGÉE -->
                     <div class="trpro-checkbox-item">
                         <input type="checkbox" name="specialties[]" value="administration-systeme" id="spec-admin">
                         <span class="trpro-checkmark"></span>
@@ -134,6 +134,111 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 <span class="trpro-error-message" id="trpro-specialties-error"></span>
+            </div>
+            
+            <!-- ✅ NOUVEAU : Zones d'intervention obligatoires -->
+            <div class="trpro-form-group">
+                <label>Zones d'intervention * (sélectionnez toutes vos zones)</label>
+                <div class="trpro-regions-grid">
+                    <div class="trpro-regions-section">
+                        <h4><i class="fas fa-map-marked-alt"></i> Régions françaises</h4>
+                        <div class="trpro-checkbox-grid trpro-regions-checkbox">
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="ile-de-france" id="region-idf">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-idf">Île-de-France</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="auvergne-rhone-alpes" id="region-ara">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-ara">Auvergne-Rhône-Alpes</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="nouvelle-aquitaine" id="region-na">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-na">Nouvelle-Aquitaine</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="occitanie" id="region-occ">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-occ">Occitanie</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="hauts-de-france" id="region-hdf">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-hdf">Hauts-de-France</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="grand-est" id="region-ge">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-ge">Grand Est</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="provence-alpes-cote-azur" id="region-paca">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-paca">Provence-Alpes-Côte d'Azur</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="pays-de-la-loire" id="region-pdl">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-pdl">Pays de la Loire</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="bretagne" id="region-bretagne">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-bretagne">Bretagne</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="normandie" id="region-normandie">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-normandie">Normandie</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="bourgogne-franche-comte" id="region-bfc">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-bfc">Bourgogne-Franche-Comté</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="centre-val-de-loire" id="region-cvl">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-cvl">Centre-Val de Loire</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="corse" id="region-corse">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-corse">Corse</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="trpro-regions-section">
+                        <h4><i class="fas fa-globe"></i> Autres zones</h4>
+                        <div class="trpro-checkbox-grid trpro-regions-checkbox">
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="outre-mer" id="region-dom-tom">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-dom-tom">Outre-mer (DOM-TOM)</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="europe" id="region-europe">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-europe">Europe (hors France)</label>
+                            </div>
+                            <div class="trpro-checkbox-item">
+                                <input type="checkbox" name="intervention_regions[]" value="international" id="region-international">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-international">International</label>
+                            </div>
+                            <div class="trpro-checkbox-item trpro-highlighted">
+                                <input type="checkbox" name="intervention_regions[]" value="distanciel" id="region-distanciel">
+                                <span class="trpro-checkmark"></span>
+                                <label for="region-distanciel">Formation à distance</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <span class="trpro-error-message" id="trpro-regions-error"></span>
+                <small class="trpro-field-help">Sélectionnez toutes les zones où vous pouvez intervenir</small>
             </div>
             
             <div class="trpro-form-row">
@@ -185,7 +290,6 @@ if (!defined('ABSPATH')) {
                             <small>Formats acceptés: PDF, DOC, DOCX</small>
                         </div>
                     </div>
-                    <!-- ✅ ID CORRIGÉ pour correspondre au data-target -->
                     <input type="file" id="trpro-cv-file" name="cv_file" accept=".pdf,.doc,.docx" required style="display: none;">
                     <div class="trpro-file-preview" id="trpro-cv-file-preview"></div>
                     <span class="trpro-error-message"></span>
@@ -202,7 +306,6 @@ if (!defined('ABSPATH')) {
                             <small>Formats acceptés: JPG, PNG, GIF</small>
                         </div>
                     </div>
-                    <!-- ✅ ID CORRIGÉ -->
                     <input type="file" id="trpro-photo-file" name="photo_file" accept=".jpg,.jpeg,.png,.gif" style="display: none;">
                     <div class="trpro-file-preview" id="trpro-photo-file-preview"></div>
                 </div>
@@ -244,9 +347,7 @@ if (!defined('ABSPATH')) {
                     </div>
                 </div>
                 
-                <!-- ✅ CONSENTEMENT RGPD CORRIGÉ -->
                 <div class="trpro-consent-checkboxes">
-                    <!-- CONSENTEMENT RGPD OBLIGATOIRE -->
                     <div class="trpro-consent-item trpro-required-consent">
                         <div class="trpro-consent-wrapper">
                             <div class="trpro-consent-checkbox">
@@ -260,11 +361,9 @@ if (!defined('ABSPATH')) {
                                 <p>Je consens au traitement de mes données personnelles pour la gestion de mon profil de formateur et la mise en relation avec des recruteurs potentiels.</p>
                             </div>
                         </div>
-                        <!-- ✅ ÉLÉMENT MANQUANT AJOUTÉ -->
                         <span class="trpro-error-message" id="trpro-rgpd-error"></span>
                     </div>
                     
-                    <!-- CONSENTEMENT MARKETING OPTIONNEL -->
                     <div class="trpro-consent-item trpro-optional-consent">
                         <div class="trpro-consent-wrapper">
                             <div class="trpro-consent-checkbox">
